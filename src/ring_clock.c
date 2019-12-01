@@ -4,16 +4,18 @@
 #include "i2c.h"
 #include "uart.h"
 
-extern char     rs232_inbuf[];  // RS232 input buffer
-extern uint8_t  rs232_ptr;      // index in RS232 buffer
-extern uint32_t t2_millis;      // Updated in TMR2 interrupt
+char     rs232_inbuf[UART_BUFLEN]; // buffer for RS232 commands
+uint8_t  rs232_ptr     = 0;        // index in RS232 buffer
+extern uint32_t t2_millis;         // Updated in TMR2 interrupt
 
+char     ring_clk_ver[] = "Ring Clock v0.2\n";
 uint8_t led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
 uint8_t led_g[NR_LEDS]; // Array with 8-bit green colour for all WS2812
 uint8_t led_b[NR_LEDS]; // Array with 8-bit blue colour for all WS2812
 uint8_t seconds = 0;
 uint8_t minutes = 0;
 uint8_t hours   = 0;
+uint8_t dow     = 0;
 uint8_t slpos   = 0; // position of sling
 
 /*-----------------------------------------------------------------------------
@@ -187,12 +189,13 @@ void pattern_task(void)
     uint8_t lred; // AM: green, PM: yellow
     uint8_t i,h,bsec,esec,bmin,emin,sli;
     
-    //test_pattern();
+    test_pattern();
     for (i = 0; i < NR_LEDS; i++)
     {
         led_g[i] = led_r[i] = led_b[i] = 0;
     } // for i
- 
+    if (!working_hours()) return;
+    
     if (seconds == 0)
     {
         bsec = 0;
@@ -216,16 +219,17 @@ void pattern_task(void)
         
     for (i = bsec; i <= esec; i++)
     {
-        led_r[get_bottom_led_nr(i)] = ((i % 5) ? 0x08 : 0x40);
+        led_b[get_bottom_led_nr(i)] = ((i % 5) ? 0x08 : 0x40);
     } // for i
     for (i = bmin; i <= emin; i++)
     {
-        led_b[get_bottom_led_nr(i)-12] = ((i % 5) ? 0x08 : 0x40);
+        led_g[get_bottom_led_nr(i)-12] = ((i % 5) ? 0x08 : 0x40);
     } // for i
     if (hours > 12)
     {
          h    = hours - 12;
-         lred = 0x10; // yellow color for PM
+         //lred = 0x10; // yellow color for PM
+         lred = 0x00;
     } // if
     else 
     {
@@ -234,8 +238,8 @@ void pattern_task(void)
     } // else
     for (i = ((h == 12) ? 0 : 1); i <= h; i++)
     {
-        led_g[hr[i]] = 0x10;
-        led_r[hr[i]] = lred;
+        led_r[hr[i]] = 0x10;
+        led_g[hr[i]] = lred;
     } // for i
 
     sli = slidx[slpos];
@@ -288,6 +292,7 @@ void clock_task(void)
     seconds = p.sec;
     minutes = p.min;
     hours   = p.hour;
+    dow     = p.dow;
     __enable_interrupt();
 } // clock_task()
 
@@ -298,16 +303,14 @@ void print_date_and_time(void)
     
     ds3231_gettime(&p);
     uart_printf("DS3231: ");
-    sprintf(s2," %d-%d-%d, %d:%d.%d\n",p.date,p.mon,p.year,p.hour,p.min,p.sec);
+    sprintf(s2," %d-%d-%d, %d:%d.%d, dow:%d, whrs:%d\n",p.date,p.mon,p.year,p.hour,p.min,p.sec,dow,working_hours());
     uart_printf(s2);
 } // print_date_and_time()
 
-void print_dow(uint8_t dow)
+bool working_hours(void)
 {
-    char day[8][4] = {"???","Mon","Tue","Wed","Thu","Fri","Sat","Sun"};
-
-    uart_printf(day[dow]);
-} // print_dow()
+    return (dow > 0) && (dow < 6) && (hours >= 8) && (hours < 17);
+} // working_hours()
 
 /*-----------------------------------------------------------------------------
   Purpose: interpret commands which are received via the USB serial terminal:
@@ -336,17 +339,36 @@ void execute_single_command(char *s)
                             m  = atoi(s1);
                             s1 = strtok(NULL ,":-");
                             y  = atoi(s1);
-                            uart_printf("Date: ");
-                            print_dow(ds3231_calc_dow(d,m,y));
-                            sprintf(s2,", %d-%d-%d\n",d,m,y);
+                            sprintf(s2,"dow: %d, %d-%d-%d\n",dow,d,m,y);
                             uart_printf(s2);
                             ds3231_setdate(d,m,y); // write to DS3231 IC
                             break;
-                    case 1: print_date_and_time();
+                    case 1: // Set Time
+                            s1      = strtok(&s[3],":-.");
+                            hours   = atoi(s1);
+                            s1      = strtok(NULL ,":-.");
+                            minutes = atoi(s1);
+                            s1      = strtok(NULL ,":-.");
+                            seconds = atoi(s1);
+                            sprintf(s2,"Time: %d:%d:%d\n",hours,minutes,seconds);
+                            uart_printf(s2);
+                            ds3231_settime(hours,minutes,seconds); // write to DS3231 IC
                             break;
-                   default: uart_printf("Usage: d0 = Set Date dd-mm-yyyy\n");
-                            uart_printf("d1 = Get Date and Time\n");
+                    case 2: print_date_and_time();
                             break;
+                    case 3: // Get Temperature
+                            temp = ds3231_gettemp();
+                            sprintf(s2,"DS3231: %d.",temp>>2);
+                            uart_printf(s2);
+                            switch (temp & 0x03)
+                            {
+				case 0: uart_printf("00 °C\n"); break;
+				case 1: uart_printf("25 °C\n"); break;
+				case 2: uart_printf("50 °C\n"); break;
+				case 3: uart_printf("75 °C\n"); break;
+                            } // switch
+                            break;
+                   default: break;
                  } // switch
                  break;
   
@@ -354,7 +376,7 @@ void execute_single_command(char *s)
 		 switch (num)
 		 {
                     case 0: // revision
-                            uart_printf("Ring-Clock V0.1\n");
+                            uart_printf(ring_clk_ver);
                             break;
                     case 1: // List all tasks
                             list_all_tasks(); 
@@ -373,51 +395,11 @@ void execute_single_command(char *s)
 			    uart_putc('\r');
                             break;
 
-		   default: uart_printf("s0 = Revision number\n");
-                            uart_printf("s1 = List all Tasks\n");
-                            uart_printf("s2 = I2C-scan\n");
-                            break;
+		   default: break;
                  } // switch
 		 break;
                                         
-        case 't': // 0 = Set Time, 1 = Get Time, 2 = Get Temperature
-		 switch (num)
-		 {
-                    case 0: // Set Time
-                            s1      = strtok(&s[3],":-.");
-                            hours   = atoi(s1);
-                            s1      = strtok(NULL ,":-.");
-                            minutes = atoi(s1);
-                            s1      = strtok(NULL ,":-.");
-                            seconds = atoi(s1);
-                            sprintf(s2,"Time: %d:%d:%d\n",hours,minutes,seconds);
-                            uart_printf(s2);
-                            ds3231_settime(hours,minutes,seconds); // write to DS3231 IC
-                            break;
-                    case 1: print_date_and_time();
-                            break;
-                    case 2: // Get Temperature
-                            temp = ds3231_gettemp();
-                            sprintf(s2,"DS3231: %d.",temp>>2);
-                            uart_printf(s2);
-                            switch (temp & 0x03)
-                            {
-				case 0: uart_printf("00 °C\n"); break;
-				case 1: uart_printf("25 °C\n"); break;
-				case 2: uart_printf("50 °C\n"); break;
-				case 3: uart_printf("75 °C\n"); break;
-                            } // switch
-                            break;
-                   default: uart_printf("t0 = Set Time hh:mm:ss\n");
-                            uart_printf("t1 = Get Date and Time\n");
-                            uart_printf("t2 = Get Temperature\n");
-                            break;
-                 } // switch
-                 break;
-	   
-        default: uart_printf("Possible commands: d0 dd-mm-yyyy, d1\n");
-                 uart_printf("s0, s1, s2, t0 hh:mm:ss, t1, t2\n");
-	         break;
+        default: break;
 
    } // switch
 } // execute_single_command()
@@ -473,7 +455,7 @@ int main(void)
     setup_timer2();            // Set Timer 2 to 1 kHz
     i2c_init(0);               // Init. I2C-peripheral
     uart_init();               // Init. UART-peripheral
-    uart_printf("ring-clock v01\n");
+    uart_printf(ring_clk_ver);
     
     // Initialise all tasks for the scheduler
     scheduler_init();                      // clear task_list struct
@@ -486,6 +468,5 @@ int main(void)
     {   // background-processes
         dispatch_tasks();        // Run task-scheduler()
         rs232_command_handler(); // run command handler continuously
-        __wait_for_interrupt();  // do nothing
     } // while
 } // main()

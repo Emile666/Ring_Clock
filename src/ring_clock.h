@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <ctype.h>
 
 //-----------------------------------------------------------------------------------------------
@@ -61,6 +62,7 @@
                          
 void print_date_and_time(void);
 void print_dow(uint8_t dow);
+bool working_hours(void);
 void execute_single_command(char *s);
 void rs232_command_handler(void);
 
