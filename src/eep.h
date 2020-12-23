@@ -1,12 +1,12 @@
-#ifndef _DELAY_H
-#define _DELAY_H
+#ifndef _STM8_EEP_H
+#define _STM8_EEP_H
 /*==================================================================
-   File Name    : delay.h
-   Author       : Emile
+  File Name    : eep.h
+  Author       : Emile
   ------------------------------------------------------------------
-  Purpose : This is the header file for delay.c
+  Purpose : This is the header-file for eep.c
   ------------------------------------------------------------------
-  This is free software: you can redistribute it and/or modify
+  This file is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
@@ -17,14 +17,16 @@
   GNU General Public License for more details.
  
   You should have received a copy of the GNU General Public License
-  along with this file.  If not, see <http://www.gnu.org/licenses/>.
-  ================================================================== */ 
+  along with file.  If not, see <http://www.gnu.org/licenses/>.
+  ==================================================================
+*/ 
 #include <stdint.h>
 
-#define wait_for_interrupt() {_asm("wfi\n");} /* Wait For Interrupt */
+// EEPROM base address within STM8 uC
+#define EEP_BASE_ADDR (0x4000)
 
-uint32_t millis(void);
-void     delay_msec(uint16_t ms);
-void     delay_usec(uint16_t us);
+// Function prototypes
+uint16_t eeprom_read_config(uint8_t eeprom_address);
+void     eeprom_write_config(uint8_t eeprom_address,uint16_t data);
 
 #endif

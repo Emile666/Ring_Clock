@@ -1,6 +1,25 @@
 #ifndef RING_CLOCK_H
 #define RING_CLOCK_H
-
+/*==================================================================
+  File Name    : ring_clock.h
+  Author       : Emile
+  ------------------------------------------------------------------
+  Purpose : This is the header file for ring_clock.c
+  ------------------------------------------------------------------
+  This is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+ 
+  This file is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+ 
+  You should have received a copy of the GNU General Public License
+  along with this file.  If not, see <http://www.gnu.org/licenses/>.
+  ==================================================================
+*/ 
 #include <iostm8s103f3.h>
 #include <intrinsics.h> 
 #include <stdint.h>
@@ -26,9 +45,11 @@
 //                                 PA3 | 10    11 | PB5      I2C-SDA
 //                                     ------------
 //-----------------------------------------------------------------------------------------------
-#define DI_3V3 (0x08)
-#define TX     (0x20)
-#define RX     (0x40)
+#define I2C_SCL (0x10) /* PB4 */
+#define I2C_SDA (0x20) /* PB5 */
+#define DI_3V3  (0x08) /* PC3 */
+#define TX      (0x20) /* PD5 */
+#define RX      (0x40) /* PD6 */
 
 //-----------------------------------------------------------------------------------------------
 // https://wp.josh.com/2014/05/13/ws2812-neopixels-are-not-so-finicky-once-you-get-to-know-them/
@@ -58,12 +79,35 @@
 // For one PCB segment, this is 36
 // For the small test ring, this is 12
 //-------------------------------------------------
-#define NR_LEDS (180)                    
+#define NR_LEDS       (180)                    
+#define LED_INTENSITY (0x10) /* initial value for LED intensity */
                          
-void print_date_and_time(void);
-void print_dow(uint8_t dow);
-bool working_hours(void);
-void execute_single_command(char *s);
-void rs232_command_handler(void);
+//-------------------------------------------------
+// Constants for the independent watchdog (IWDG)
+//-------------------------------------------------
+#define IWDG_KR_KEY_ENABLE  (0xCC)
+#define IWDG_KR_KEY_REFRESH (0xAA)
+#define IWDG_KR_KEY_ACCESS  (0x55)
+
+//-------------------------------------------------
+// Constants for EEPROM
+//-------------------------------------------------
+#define EEP_ADDR_INTENSITY  (0x10) /* LED intensity */
+#define EEP_ADDR_DST_ACTIVE (0x12) /* 1 = Day-light Savings Time active */
+#define EEP_ADDR_BBEGIN_H   (0x14) /* Blanking begin-time hours */
+#define EEP_ADDR_BBEGIN_M   (0x16) /* Blanking begin-time minutes */
+#define EEP_ADDR_BEND_H     (0x18) /* Blanking end-time hours */
+#define EEP_ADDR_BEND_M     (0x1A) /* Blanking end-time minutes */
+                         
+//-------------------------------------------------
+// Function prototypes
+//-------------------------------------------------
+void     print_date_and_time(void);
+void     print_dow(uint8_t dow);
+uint16_t cmin(uint8_t h, uint8_t m);
+bool     blanking_active(void);
+void     check_and_set_summertime(void);
+void     execute_single_command(char *s);
+void     rs232_command_handler(void);
 
 #endif
