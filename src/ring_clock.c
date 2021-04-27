@@ -20,8 +20,11 @@
  
   You should have received a copy of the GNU General Public License
   along with this file.  If not, see <http://www.gnu.org/licenses/>.
-  ==================================================================
-*/ 
+  --------------------------------------------------------------------
+  Revision 0.33  2021/03/30 Emile
+  - Bugfix: time was reset at power-up: dt struct not initialized
+  - Blanking begin and end the same now disables blanking
+  ====================================================================*/ 
 #include "ring_clock.h"
 #include "delay.h"
 #include "scheduler.h"
@@ -34,7 +37,7 @@ char     rs232_inbuf[UART_BUFLEN]; // buffer for RS232 commands
 uint8_t  rs232_ptr     = 0;        // index in RS232 buffer
 extern uint32_t t2_millis;         // Updated in TMR2 interrupt
 
-char     ring_clk_ver[] = "Ring Clock v0.31\n";
+char     ring_clk_ver[] = "Ring Clock v0.33\n";
 uint8_t led_r[NR_LEDS]; // Array with 8-bit red colour for all WS2812
 uint8_t led_g[NR_LEDS]; // Array with 8-bit green colour for all WS2812
 uint8_t led_b[NR_LEDS]; // Array with 8-bit blue colour for all WS2812
@@ -490,9 +493,10 @@ bool blanking_active(void)
 	uint16_t b = cmin(blank_begin_h, blank_begin_m);
 	uint16_t e = cmin(blank_end_h  , blank_end_m);
 	
-	// (b>=e): Example: 23:30 and 05:30, active if x>=b OR  x<=e
-	// (b< e): Example: 02:30 and 05:30, active if x>=b AND x<=e
-	return (b >= e) && ((x >= b) || (x <= e)) || ((x >= b) && (x < e)); 
+	// (b > e): Example: 23:30 and 05:30, active if x>=b OR  x<=e
+	// (b < e): Example: 02:30 and 05:30, active if x>=b AND x<=e
+	return ((b > e) && ((x >= b) || (x <= e))) || 
+               ((b < e) && ((x >= b) && (x < e))); 
 } // blanking_active()
 
 /*-----------------------------------------------------------------------------
@@ -719,12 +723,14 @@ int main(void)
     blank_begin_m = (uint8_t)eeprom_read_config(EEP_ADDR_BBEGIN_M);
     blank_end_h   = (uint8_t)eeprom_read_config(EEP_ADDR_BEND_H);
     blank_end_m   = (uint8_t)eeprom_read_config(EEP_ADDR_BEND_M);
+    ds3231_gettime(&dt);   // Read time from DS3231 RTC
+    print_date_and_time(); // and output to UART   
     
     // Initialise all tasks for the scheduler
     scheduler_init();                          // clear task_list struct
-    add_task(pattern_task, "PTRN"  , 0,  100); // every 100 msec.
-    add_task(ws2812_task , "WS2812",50,  100); // every 100 msec.
-    add_task(clock_task  , "CLK"   ,80, 1000); // every second
+    add_task(clock_task  , "CLK"   ,10, 1000); // every second
+    add_task(pattern_task, "PTRN"  ,40,  100); // every 100 msec.
+    add_task(ws2812_task , "WS2812",70,  100); // every 100 msec.
     init_watchdog();                           // init. the IWDG watchdog
     __enable_interrupt();
 
